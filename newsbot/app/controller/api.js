@@ -1,25 +1,20 @@
-var express = require('express');
+//api.js
 var request = require('request');
 var rssReader = require('feed-read');
-var router = express.Router();
+var properties = require('../config/properties.js');
 
-/* GET home page. */
-router.get('/', function(req, res, next) {
-  res.render('index', { title: 'Express' });
-});
-
-router.get('/webhook', function(req, res) {
+exports.tokenVerification = function(req, res) {
   if (req.query['hub.mode'] === 'subscribe' &&
-      req.query['hub.verify_token'] === 'hello_token_success') {
+      req.query['hub.verify_token'] === properties.facebook_challenge) {
     console.log("Validating webhook");
     res.status(200).send(req.query['hub.challenge']);
   } else {
     console.error("Failed validation. Make sure the validation tokens match.");
     res.sendStatus(403);
   }
-});
+};
 
-router.post('/webhook', function (req, res) {
+exports.handleMessage = function (req, res) {
   var data = req.body;
 
   // Make sure this is a page subscription
@@ -51,7 +46,7 @@ router.post('/webhook', function (req, res) {
 // successfully received the callback. Otherwise, the request will time out.
 res.sendStatus(200);
 }
-});
+};
 
 function receivedMessage(event) {
   var senderID = event.sender.id;
@@ -70,11 +65,12 @@ function receivedMessage(event) {
   var messageAttachments = message.attachments;
 
   if (messageText) {
+    var normalizedText = messageText.toLowerCase().replace(' ', '');
 
     // If we receive a text message, check to see if it matches any special
     // keywords and send back the corresponding example. Otherwise, just echo
     // the text we received.
-    switch (messageText) {
+    switch (normalizedText) {
       case 'image':
         sendImageMessage(senderID);
         break;
@@ -91,6 +87,18 @@ function receivedMessage(event) {
         sendReceiptMessage(senderID);
         break;
 
+      case 'showmore':
+        getArticles(function(err, articles) {
+          var maxArticles = Math.min(articles.length, 5);
+          
+          for (var i=0; i<maxArticles; i++) {
+            sendTextMessage(senderID, articles[i]);
+          }
+
+      });
+        break;
+
+
       default:
         getArticles(function(err, articles) {
           sendTextMessage(senderID, articles[0]);
@@ -103,10 +111,10 @@ function receivedMessage(event) {
   }
 }
 
-var googleNewsEndpoint = "https://news.google.com/news?output=rss";
+
 
 function getArticles(callback) {
-  rssReader(googleNewsEndpoint, function(err, articles) {
+  rssReader(properties.google_news_endpoint, function(err, articles) {
     if (err) {
       callback(err);
     } else {
@@ -146,8 +154,8 @@ function sendTextMessage(recipientId, article) {
 
 function callSendAPI(messageData) {
   request({
-    uri: 'https://graph.facebook.com/v2.6/me/messages',
-    qs: { access_token: 'EAAMpQnSc4ogBANwG7EnNADfYztyr9QjH1baREwEWlstwZBreA2i3gPcOwHtMzVvNA1LrZAGJBMMc0aIc9s3vcBAaHRZA9QlsnzhpOpvcZALsK1WmERB6NJYYLnzWMpPLZBrZAJbHMcikdkNABL048Pj29tWeLq7d2fiwMx2aKZBmgZDZD' },
+    uri: properties.facebook_message_endpoint,
+    qs: { access_token: properties.facebook_token },
     method: 'POST',
     json: messageData
 
@@ -165,5 +173,3 @@ function callSendAPI(messageData) {
     }
   });
 }
-
-module.exports = router;
